@@ -7,14 +7,15 @@ Created on Mon Dec 23 12:25:10 2024
 
 from __future__ import annotations
 
-from scipy.stats import bernoulli, nbinom, uniform
+from scipy.stats import bernoulli, nbinom, uniform, weibull_min, skewnorm
+from scipy.optimize import minimize
 from queue import Queue
 
 
 class Person():
-    def __init__(self, simulation: Simulation, infection_time: float, is_traced: bool = None):
+    def __init__(self, scenario: Scenario, infection_time: float, is_traced: bool = None):
 
-        self.simulation = simulation
+        self.scenario = scenario
         # Determine timeline for this person:
         #
         #   TIMELINE:
@@ -25,38 +26,69 @@ class Person():
         #
         self.infection_time = infection_time
         if is_traced is None:
-            self.is_traced = bool(bernoulli.rvs(self.simulation.rho))
+            self.is_traced = bool(bernoulli.rvs(self.scenario.rho))
         else:
             self.is_traced = is_traced
-        self.is_subclinical = bool(bernoulli.rvs(self.simulation.subclinical_prob))
-        incubation_period = 5.8     # TODO: should be random, not hard-coded; probability distr. to be determined
-        self.symptoms_time = self.infection_time + incubation_period
+        self.is_subclinical = bool(bernoulli.rvs(self.scenario.subclinical_prob))
+        self.incubation_period = weibull_min.rvs(self.scenario.incubation_p_shape, scale = self.scenario.incubation_p_scale)
+        self.symptoms_time = self.infection_time + self.incubation_period
         if self.is_traced:
             self.isolation_time = self.symptoms_time    # traced cases are isolated with no delay
         elif self.is_subclinical:
             self.isolation_time = float('inf')      # subclinical cases are never isolated
         else:
-            onset_to_isolation_delay = 3.43     # TODO: should be random, not hard-coded; probability distr. to be determined
+            onset_to_isolation_delay = weibull_min.rvs(self.scenario.delay_shape, scale = self.scenario.delay_scale)
             self.isolation_time = self.symptoms_time + onset_to_isolation_delay
         
     
     def infect(self):
-        number_of_new_cases = nbinom.rvs(n=self.simulation.R_0, p=self.simulation.p)
-        new_infections = [self.infection_time + uniform.rvs(0.1, 7) for _ in range(number_of_new_cases)]   # TODO: replace uniform distr by serial intervals; probability distr. to be determined
-        new_infections = [i for i in new_infections if i <= self.simulation.T]   # ignore cases infected after T
-        # print(f"{len(new_infections)} new infections")
+        number_of_new_cases = nbinom.rvs(n=self.scenario.R_0, p=self.scenario.p)    # TODO: parameters
+        serial_interval = skewnorm.rvs(self.scenario.serial_int_skewness, 
+                                       loc = self.incubation_period, 
+                                       scale = self.scenario.serial_int_scale)
+        new_infections = [self.infection_time + serial_interval for _ in range(number_of_new_cases)]
+        new_infections = [i for i in new_infections if i <= self.scenario.T]   # ignore cases infected after T
+        print(f"{len(new_infections)} new infections")
         for infection in new_infections:
-            person = Person(self.simulation, infection_time=infection)
-            self.simulation.new_case(person)
+            person = Person(self.scenario, infection_time=infection)
+            self.scenario.new_case(person)
     
         
-class Simulation():
-    def __init__(self, T: float, initial_cases: int, rho: float, R_0: float, p: float, subclinical_prob: float):
+class Scenario():
+    def __init__(self, T: float, initial_cases: int, rho: float, R_0: float, p: float, subclinical_prob: float, transmission_before_symptoms_percentage: int, onset_to_isolation: str):
         self.T = T
         self.R_0 = R_0
         self.p = p          # TODO: parameter p should be somehow computed (how???) 
         self.subclinical_prob = subclinical_prob
         self.rho = rho
+        
+        # Parameters for the Weibull distribution for generating incubation periods:
+        self.incubation_p_shape = 2.322737          # shape (c / k)
+        self.incubation_p_scale = 6.492272     # scale (lambda)
+        
+        # Parameters for the skew-normal distribution for generating serial intervals:
+        self.serial_int_scale = 2
+        match transmission_before_symptoms_percentage:
+            case 1:
+                self.serial_int_skewness = 30
+            case 15:
+                self.serial_int_skewness = 1.95
+            case 30:
+                self.serial_int_skewness = 0.7
+            case _:
+                raise ValueError("transmission_before_symptoms_percentage parameter must have value 1, 15 or 30.")
+        
+        # Parameters for the Weibull distribution for generating onset-to-isolation delay:
+        match onset_to_isolation:
+            case "short":
+                self.delay_shape = 1.651524
+                self.delay_scale = 4.287786
+            case "long":
+                self.delay_shape = 2.305172
+                self.delay_scale = 9.483875
+            case _:
+                raise ValueError("onset_to_isolation parameter must have value 'short' or 'long'.")
+        
         self.cases = []     # empty list to store all infected cases as Person objects
         self.queue = Queue()    # queue manages infections
         # Generate initial cases
@@ -74,9 +106,12 @@ class Simulation():
         self.queue.put(person)
         self.cases.append(person)
         
-            
+
+    
         
 if __name__ == "__main__":
-    sim = Simulation(T=20, initial_cases=5, rho=0.5, R_0=2.5, p=0.5, subclinical_prob=0.1)
-    sim.simulate()
+    scen = Scenario(T=20, initial_cases=5, rho=0.5, R_0=2.5, p=0.5, 
+                    subclinical_prob=0.1, transmission_before_symptoms_percentage=1,
+                    onset_to_isolation="short")
+    scen.simulate()
     
