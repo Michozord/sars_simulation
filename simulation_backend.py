@@ -16,7 +16,7 @@ class Person:
     def __init__(
         self,
         scenario: Scenario,
-        symptoms_onset_time: float = None,
+        infection_time: float,
         is_traced: bool = None,
     ):
         self.scenario = scenario
@@ -33,10 +33,9 @@ class Person:
         else:
             self.is_traced = is_traced
         self.is_subclinical = bool(bernoulli.rvs(self.scenario.subclinical_prob))
+        self.infection_time = infection_time 
         self.incubation_period = weibull_min.rvs(self.scenario.incubation_p_shape, scale=self.scenario.incubation_p_scale)
-
-        self.symptoms_time = symptoms_onset_time if symptoms_onset_time is not None else self.incubation_period
-        self.infection_time = self.symptoms_time - self.incubation_period
+        self.symptoms_time = self.infection_time + self.incubation_period
 
         if self.is_traced:
             self.isolation_time = self.symptoms_time    # traced cases are isolated with no delay
@@ -54,11 +53,11 @@ class Person:
             scale=self.scenario.serial_int_scale,
             size=number_of_new_cases,
         )
-        symptoms_onset_times = [self.symptoms_time + serial_interval for serial_interval in serial_intervals]
-        symptoms_onset_times = [i for i in symptoms_onset_times if i <= self.scenario.T]   # ignore cases infected after T
-        print(f"{len(symptoms_onset_times)} new infections")
-        for symptoms_onset_time in symptoms_onset_times:
-            person = Person(self.scenario, symptoms_onset_time=symptoms_onset_time)
+        secondary_cases_times = [self.infection_time + serial_interval for serial_interval in serial_intervals]
+        secondary_cases_times = [i for i in secondary_cases_times if i <= self.isolation_time and i <= self.scenario.T]   # ignore cases infected after T and after isolation
+        print(f"{len(secondary_cases_times)} new infections")
+        for secondary_case_time in secondary_cases_times:
+            person = Person(self.scenario, infection_time=secondary_case_time)
             self.scenario.new_case(person)
 
 
@@ -69,15 +68,14 @@ class Scenario:
         initial_cases: int,
         rho: float,
         R_0: float,
-        R_0_disp: float,
         subclinical_prob: float,
         transmission_before_symptoms_percentage: int,
         onset_to_isolation: str,
     ):
         self.T = T
         self.R_0 = R_0
-        self.R_0_disp = R_0_disp
-        self.p = R_0_disp / (R_0_disp + R_0)
+        self.R_0_disp = 0.16    # Overdispersion in R_0
+        self.p = self.R_0_disp / (self.R_0_disp + R_0)
         self.subclinical_prob = subclinical_prob
         self.rho = rho
 
@@ -112,9 +110,8 @@ class Scenario:
         self.queue = Queue()  # queue manages infections
         # Generate initial cases
         for _ in range(initial_cases):
-            person = Person(self, is_traced=False)
-            self.cases.append(person)
-            self.queue.put(person)
+            person = Person(self, is_traced=False, infection_time=0)
+            self.new_case(person)
 
     def simulate(self):
         while not self.queue.empty():
@@ -132,7 +129,6 @@ if __name__ == "__main__":
         initial_cases=5,
         rho=0.2,
         R_0=2.5,
-        R_0_disp=0.16,
         subclinical_prob=0.1,
         transmission_before_symptoms_percentage=1,
         onset_to_isolation="short",
