@@ -55,7 +55,7 @@ class Person:
         )
         secondary_cases_times = [self.infection_time + serial_interval for serial_interval in serial_intervals]
         secondary_cases_times = [i for i in secondary_cases_times if i <= self.isolation_time and i <= self.scenario.T]   # ignore cases infected after T and after isolation
-        print(f"{len(secondary_cases_times)} new infections")
+        # print(f"{len(secondary_cases_times)} new infections")
         for secondary_case_time in secondary_cases_times:
             person = Person(self.scenario, infection_time=secondary_case_time)
             self.scenario.new_case(person)
@@ -65,6 +65,7 @@ class Scenario:
     def __init__(
         self,
         T: float,
+        T_control: float,
         initial_cases: int,
         rho: float,
         R_0: float,
@@ -73,6 +74,7 @@ class Scenario:
         onset_to_isolation: str,
     ):
         self.T = T
+        self.T_control = T_control
         self.R_0 = R_0
         self.R_0_disp = 0.16    # Overdispersion in R_0
         self.p = self.R_0_disp / (self.R_0_disp + R_0)
@@ -112,20 +114,30 @@ class Scenario:
         for _ in range(initial_cases):
             person = Person(self, is_traced=False, infection_time=0)
             self.new_case(person)
+    
+    
+    def __repr__(self):
+         return f"Scenario:\n\tT = {self.T}\n\trho = {self.rho}\n\tR_0 = {self.R_0}\n\tsubcl. prob. = {self.subclinical_prob}"
+
 
     def simulate(self):
+        #print("Started", self)
         while not self.queue.empty():
             person = self.queue.get()
             person.infect()
+        self.cases_in_control = sum([p.infection_time >= self.T_control for p in self.cases])
+        #print(f"Simulation finished: {len(self.cases)} cases. Cases in control: {self.cases_in_control}.")
 
     def new_case(self, person: Person):
         self.queue.put(person)
         self.cases.append(person)
 
+      
 
 if __name__ == "__main__":
     scen = Scenario(
         T=20,
+        T_control=15,
         initial_cases=5,
         rho=0.2,
         R_0=2.5,
