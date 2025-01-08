@@ -75,6 +75,7 @@ class Scenario:
     ):
         self.T = T
         self.T_control = T_control
+        self.cases_in_control = None    # will contain number of infections between T_control and T
         self.R_0 = R_0
         self.R_0_disp = 0.16    # Overdispersion in R_0
         self.p = self.R_0_disp / (self.R_0_disp + R_0)
