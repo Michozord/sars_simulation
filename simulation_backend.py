@@ -137,13 +137,14 @@ class Simulation:
 
 
     def simulate(self):
-        while not self.queue.empty():
+        while not self.queue.empty() and len(self.cases) < 5000:
             person = self.queue.get()
             number_of_new_cases = person.infect()
             self.effective_R_0_vector.append(number_of_new_cases)
 
         self.cases_in_control = sum([p.infection_time >= self.scenario_parameters.T_control for p in self.cases])
-
+        if len(self.cases) >= 5000 and self.cases_in_control == 0:
+            self.cases_in_control += 1
 
     def new_case(self, person: Person):
         self.queue.put(person)
@@ -153,7 +154,7 @@ class Simulation:
 @dataclass
 class SimulationResults:
     effective_R_0: float
-    is_controlled: int
+    is_controlled: bool
 
 @dataclass
 class ScenarioStatistics:
@@ -170,7 +171,7 @@ class Scenario:
         simulation.simulate()
         return SimulationResults(
             np.mean(simulation.effective_R_0_vector),
-            1 if simulation.cases_in_control == 0 else 0
+            simulation.cases_in_control == 0
         )
         
 
@@ -181,6 +182,6 @@ class Scenario:
 
         return ScenarioStatistics(
             effective_R_0_median=np.median([sim_results.effective_R_0 for sim_results in results]),
-            controlled_percentage=np.sum([sim_results.effective_R_0 for sim_results in results]) / num_simulations
+            controlled_percentage=np.sum([sim_results.is_controlled for sim_results in results]) / num_simulations
         )
 
