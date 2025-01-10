@@ -64,13 +64,15 @@ class Person:
             size=number_of_new_cases,
         )
         secondary_cases_times = [self.infection_time + serial_interval for serial_interval in serial_intervals]
-        secondary_cases_times = [i for i in secondary_cases_times if i <= self.isolation_time and i <= self.simulation.scenario_parameters.T]   # ignore cases infected after T and after isolation
+        secondary_cases_times = [i for i in secondary_cases_times if i <= self.isolation_time]   # ignore cases infected after isolation
         
         for secondary_case_time in secondary_cases_times:
+            if secondary_case_time > self.simulation.scenario_parameters.T:     # skip infections after time T
+                continue
             person = Person(self.simulation, infection_time=secondary_case_time)
             self.simulation.new_case(person)
 
-        return number_of_new_cases
+        return len(secondary_cases_times)
 
 
 @dataclass
