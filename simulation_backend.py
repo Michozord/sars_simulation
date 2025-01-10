@@ -42,18 +42,20 @@ class Person:
             self.simulation.scenario_parameters.incubation_p_shape, 
             scale=self.simulation.scenario_parameters.incubation_p_scale
         )
-        self.symptoms_time = self.infection_time + self.incubation_period
-
-        if self.is_traced:
-            self.isolation_time = self.symptoms_time    # traced cases are isolated with no delay
-        elif self.is_subclinical:
+        
+        if self.is_subclinical:
+            self.symptoms_time = float('inf')
             self.isolation_time = float('inf')      # subclinical cases are never isolated
-        else:
-            onset_to_isolation_delay = weibull_min.rvs(
-                self.simulation.scenario_parameters.delay_shape, 
-                scale=self.simulation.scenario_parameters.delay_scale
-            )
-            self.isolation_time = self.symptoms_time + onset_to_isolation_delay
+        else: 
+            self.symptoms_time = self.infection_time + self.incubation_period
+            if self.is_traced:
+                self.isolation_time = self.symptoms_time    # traced cases are isolated with no delay
+            else:
+                onset_to_isolation_delay = weibull_min.rvs(
+                    self.simulation.scenario_parameters.delay_shape, 
+                    scale=self.simulation.scenario_parameters.delay_scale
+                )
+                self.isolation_time = self.symptoms_time + onset_to_isolation_delay
 
     def infect(self):
         number_of_new_cases = nbinom.rvs(n=self.simulation.scenario_parameters.R_0_disp, p=self.simulation.scenario_parameters.p)
