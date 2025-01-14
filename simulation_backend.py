@@ -22,6 +22,7 @@ class Person:
         simulation: Simulation,
         infection_time: float,
         is_traced: bool = None,
+        is_infector_subclinical: bool = False,
     ):
         self.simulation = simulation
         # Determine timeline for this person:
@@ -36,6 +37,9 @@ class Person:
             self.is_traced = bool(bernoulli.rvs(self.simulation.scenario_parameters.rho))
         else:
             self.is_traced = is_traced
+        if is_infector_subclinical:
+            self.is_traced = False
+
         self.is_subclinical = bool(bernoulli.rvs(self.simulation.scenario_parameters.subclinical_prob))
         self.infection_time = infection_time 
         self.incubation_period = weibull_min.rvs(
@@ -71,7 +75,7 @@ class Person:
         for secondary_case_time in secondary_cases_times:
             if secondary_case_time > self.simulation.scenario_parameters.T:     # skip infections after time T
                 continue
-            person = Person(self.simulation, infection_time=secondary_case_time)
+            person = Person(self.simulation, infection_time=secondary_case_time, is_infector_subclinical=self.is_subclinical)
             self.simulation.new_case(person)
 
         return len(secondary_cases_times)
